@@ -16,7 +16,7 @@ https://babeljs.io/blog/2020/10/15/7.12.0#class-static-blocks-12079httpsgithubco
 We would get:
 
 ```
-https://tinyurl.com/y4ned4ep
+https://tinyurl.comy4ned4ep/
 ```
 
 The shortened URL is nearly one-fifth the size of the actual URL.

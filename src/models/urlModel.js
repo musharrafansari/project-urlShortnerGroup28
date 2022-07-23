@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const urlModel = new mongoose.Schema({
+const urlSchema = new mongoose.Schema({
     longUrl: {
         type: String,
         required: true,
@@ -10,6 +10,7 @@ const urlModel = new mongoose.Schema({
         type: String,
         required: true,
         trim: true,
+        unique:true
     },
     urlCode: {
         type: String,
@@ -20,4 +21,4 @@ const urlModel = new mongoose.Schema({
     },
 },{timestamps: true})
 
-module.exports = mongoose.model('Url', urlModel); 
+module.exports = mongoose.model('Url', urlSchema); 

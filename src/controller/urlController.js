@@ -1,8 +1,35 @@
 const urlModel = require("../models/urlModel");
 const shortid = require("shortid");
-const validUrl = require("valid-url");
+// const validUrl = require("valid-url");
+const redis = require("redis")
+const { promisify } = require("util");
 
-// ===========> Create Url <=================
+//=============================Redis=============================
+const redisClient = redis.createClient(
+  18442,
+  "redis-18442.c264.ap-south-1-1.ec2.cloud.redislabs.com",
+  { no_ready_check: true } 
+);
+redisClient.auth(
+  "oYMTD2EQa0z9LsmyWdtUz8dnFrfttBn4",
+  function (err) {
+    if (err) throw err;
+  }
+);
+
+redisClient.on("connect", async function () {
+  console.log("Connected to Redis...");
+});
+
+// 1.connect to server 
+// 2. use the commands 
+
+// Connection setup for Redis  
+
+const SET_ASYNC = promisify(redisClient.SET).bind(redisClient); 
+const GET_ASYNC = promisify(redisClient.GET).bind(redisClient);
+
+// ===========> Create Short Url <=================
 const createUrl = async function (req, res) {
   try {
     let data = req.body;
@@ -11,20 +38,29 @@ const createUrl = async function (req, res) {
     if (Object.keys(data).length == 0) {
       return res
         .status(400)
-        .send({ status: false, message: "All fields are mendatory" });
+        .send({ status: false, message: "All fields are mandatory" });
     }
     if (!longUrl) {
       return res
         .status(400)
         .send({ status: false, message: "longUrl must be present" });
     }
-    if(!validUrl(longUrl)) {
-        return res.status(400).send({status: false, message: "Provide a valid url"})
+    const regex =
+      /^([hH][tT][tT][pP]([sS])?:\/\/.)(www\.)?[-a-zA-Z0-9@:%.\+#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%\+.#?&//=_]*$)/g;
+    if (typeof longUrl !== "string" || !regex.test(longUrl.trim()))
+      return res
+        .status(400)
+        .send({ status: false, message: "Please provide valid Url" });
+
+    let checkUrl = await urlModel.findOne({ longUrl }).select({longUrl:1,shortUrl:1,urlCode:1,_id:0});
+    if (checkUrl) {
+      return res
+        .status(200)
+        .send({ status: true, message: "Url already shorted", data: checkUrl });
     }
 
-    let baseUrl = "http://localhost:3000/";
+    let baseUrl = "http://localhost:3000";
     let urlCode = shortid.generate();
-    console.log(urlCode);
     let shortUrl = baseUrl + "/" + urlCode;
 
     url = new urlModel({
@@ -35,21 +71,48 @@ const createUrl = async function (req, res) {
 
     let savedUrl = await urlModel.create(url);
 
-    let finalUrl = await urlModel.findOne({_id: savedUrl._id}).select({__v:0, createdAt: 0, updatedAt:0, _id: 0});
+    let finalUrl = await urlModel.findOne({ _id: savedUrl._id }).select({ __v: 0, createdAt: 0, updatedAt: 0, _id: 0 });
 
-    if(finalUrl) {
-        return res.status(400).send({status: false, message: "short Url already created"});
+      await SET_ASYNC(`${longUrl}`, JSON.stringify(finalUrl));
+    return res.status(201).send({status: true,message: "shortUrl has been created successfully",data: finalUrl, });
+  }
+   catch (err) {
+    return res.status(500).send({ status: false, message: err.message });
+  }
+};
+  
+// ============> Get Url Api <====================
+
+const getUrl = async function (req, res) {
+  try {
+    let urlCode = req.params.urlCode;
+
+    // calling from cache
+    let cachedUrl = await GET_ASYNC(`$(urlCode)`);
+    if(cachedUrl) {
+      return res.status(302).redirect(cachedUrl);
     }
-    return res
-      .status(201)
-      .send({
-        status: true,
-        message: "shortUrl has been created successfully",
-        data: finalUrl,
-      });
+
+// calling from database
+    let getUrl = await urlModel.findOne({ urlCode: urlCode });
+    // console.log(JSON.stringify(getUrl))
+      
+    if (getUrl) {
+      return res.redirect(302,getUrl.longUrl);
+    } else {
+      await SET_ASYNC(`${cachedUrl}`, JSON.stringify(getUrl));
+     
+      return res.status(404).send({ status: false, message: "UrlCode not found." });
+    }
   } catch (err) {
     return res.status(500).send({ status: false, message: err.message });
   }
 };
 
+
+
 module.exports.createUrl = createUrl;
+module.exports.getUrl = getUrl;
+
+
+
